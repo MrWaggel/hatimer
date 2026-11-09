@@ -1,5 +1,8 @@
 # Smart Timer
 
+![Smart Timer card, light](doc/preview-white.png)
+![Smart Timer card, dark](doc/preview-dark.png)
+
 A configurable, multi-instance **Smart Timer** for Home Assistant: a backend
 custom integration that creates one timer device per config entry, plus a
 dashboard card with interactive `+10 SEC` / `+1 MIN` / `+5 MIN` shortcuts and a
@@ -21,7 +24,7 @@ choose and fires the `smart_timer_on_fire` event you can hook into.
 - **Services** — `smart_timer.add_time`, `set_time`, `start`, `pause`,
   `resume`, `toggle`, `reset`, `set_sound` and `fire`.
 - **Event entity** — each device has a **Finished** event entity. Add an
-  automation from the device, or trigger on `event.<name>_finished`.
+  automation from the device, or trigger on that entity (see below).
 - **Event bus** — also fires `smart_timer_on_fire` when a timer hits zero, with the
   device id, entity id, name and total seconds in the event data.
 - **Reliable ticker** — countdown runs off a real `end_time` timestamp on the
@@ -46,6 +49,7 @@ smart-timer/
 │       ├── sensor.py                  # timer sensor entity + ticker
 │       ├── services.yaml              # service schemas
 │       ├── manifest.json
+│       ├── brand/icon.png               # Marketplace icon
 │       └── translations/en.json
 ├── www/community/smart-timer-card/    # Built card (dashboard resource)
 ├── dist/smart-timer-card.js           # Standalone built card bundle
@@ -159,6 +163,22 @@ data:
 ```
 
 ---
+
+## Automation trigger
+
+Each timer device has a **Finished** event entity. Use it as the trigger. The entity id follows the timer name, for example `event.kitchen_two_finished`.
+
+```yaml
+triggers:
+  - trigger: event.received
+    target:
+      entity_id: event.kitchen_two_finished
+    options:
+      event_type:
+        - finished
+```
+
+You can also add this from the device page: **Add automation** → **Timer finished**.
 
 ## Automations: the `on-fire` event
 

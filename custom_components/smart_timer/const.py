@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.const import Platform
 
 DOMAIN = "smart_timer"
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.EVENT]
 
 # Frontend bundle served by the integration (Marketplace installs one type).
