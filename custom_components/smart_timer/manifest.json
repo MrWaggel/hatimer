@@ -1,0 +1,14 @@
+{
+  "domain": "smart_timer",
+  "name": "Smart Timer",
+  "codeowners": [
+    "@smart-timer-maintainer"
+  ],
+  "config_flow": true,
+  "documentation": "https://example.com/smart-timer",
+  "integration_type": "entity",
+  "iot_class": "local_push",
+  "issue_tracker": "https://example.com/smart-timer/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

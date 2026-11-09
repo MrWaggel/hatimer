@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Smart Timer",
+        "description": "Create a new Smart Timer device. You can create as many as you like.\nRemember: the initial countdown duration you set here is the value used whenever the timer is reset.",
+        "data": {
+          "name": "Timer name",
+          "initial_seconds": "Initial countdown duration"
+        },
+        "data_description": {
+          "name": "A friendly name used for the device and entity, e.g. \u201cPizza\u201d.",
+          "initial_seconds": "Countdown length in seconds. Max is {max}."
+        }
+      }
+    },
+    "error": {
+      "name_required": "A timer name is required."
+    },
+    "abort": {
+      "already_configured": "A Smart Timer with that name already exists."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Smart Timer sound",
+        "description": "Choose what plays when the timer reaches zero. Configure a media player, a sound URL, or a local file path.\n\nWhen a media player fires, the integration emits the event `smart_timer_on_fire` that you can hook into with automations.",
+        "data": {
+          "media_player": "Media player (optional)",
+          "sound_url": "Sound URL (optional)",
+          "sound_path": "Sound file path (optional)",
+          "sound_volume": "Volume"
+        }
+      }
+    }
+  },
+  "services": {}
+}

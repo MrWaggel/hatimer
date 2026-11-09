@@ -1,0 +1,88 @@
+# ============================================================================
+# Smart Timer on-fire event — example automations
+#
+# When a timer reaches zero the event `smart_timer_on_fire` fires with data:
+#   - device_id      the timer's device registry id
+#   - entity_id      e.g. sensor.pizza
+#   - name           the timer name
+#   - total_seconds  the configured countdown length
+#
+# These are standalone automation examples. Copy the ones you want into your
+# HA automations (YAML or the visual editor).
+# ============================================================================
+
+# Play a notification that names the timer
+- alias: Smart Timer finished
+  triggers:
+    - trigger: event
+      event_type: smart_timer_on_fire
+  actions:
+    - service: notify.mobile_app_phone
+      data:
+        title: "Timer done"
+        message: "{{ trigger.event.data.name }} is finished!"
+
+# Flash lights three times when any timer finishes
+- alias: Flash kitchen lights on timer end
+  triggers:
+    - trigger: event
+      event_type: smart_timer_on_fire
+  actions:
+    - repeat:
+        count: 3
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: light.kitchen
+          - service: light.turn_off
+            target:
+              entity_id: light.kitchen
+          - delay: "00:00:00.5"
+
+# React only to one specific timer
+- alias: Pizza timer done
+  triggers:
+    - trigger: event
+      event_type: smart_timer_on_fire
+      event_data:
+        entity_id: sensor.pizza
+  actions:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.oven
+    - service: notify.mobile_app_phone
+      data:
+        title: "Pizza time"
+        message: "Your pizza is ready!"
+
+# Start a timer from an automation using the services
+- alias: Start a 12 minute pomodoro
+  triggers:
+    - trigger: time
+      at: "08:00:00"
+  actions:
+    - service: smart_timer.add_time
+      target:
+        entity_id: sensor.study
+      data:
+        minutes: 12
+
+# Reset a timer back to its initial value from an automation
+- alias: Reset the study timer at midnight
+  triggers:
+    - trigger: time
+      at: "00:00:00"
+  actions:
+    - service: smart_timer.reset
+      target:
+        entity_id: sensor.study
+
+# Manually trigger a timer's sound and event (e.g. from a button card)
+- alias: Ding the oven timer on demand
+  triggers:
+    - trigger: state
+      entity_id: button.ding_oven_timer
+  actions:
+    - service: smart_timer.fire
+      target:
+        entity_id: sensor.oven

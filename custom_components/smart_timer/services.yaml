@@ -1,0 +1,136 @@
+# Descriptions for Smart Timer services.
+add_time:
+  name: Add time
+  description: Add time to a Smart Timer and immediately start (or resume) counting down.
+  target:
+    entity:
+      integration: smart_timer
+  fields:
+    seconds:
+      name: Seconds
+      description: Number of seconds to add.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 86400
+          step: 1
+          mode: box
+    minutes:
+      name: Minutes
+      description: Number of minutes to add (multiplied by 60).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1440
+          step: 1
+          mode: box
+
+set_time:
+  name: Set time
+  description: Set an absolute remaining time on a Smart Timer and start counting down.
+  target:
+    entity:
+      integration: smart_timer
+  fields:
+    seconds:
+      name: Seconds
+      description: Remaining seconds to set.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 86400
+          step: 1
+          mode: box
+    minutes:
+      name: Minutes
+      description: Remaining minutes to set (multiplied by 60).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1440
+          step: 1
+          mode: box
+
+start:
+  name: Start
+  description: Start (or resume) counting down a Smart Timer.
+  target:
+    entity:
+      integration: smart_timer
+
+pause:
+  name: Pause
+  description: Pause a Smart Timer without resetting remaining time.
+  target:
+    entity:
+      integration: smart_timer
+
+resume:
+  name: Resume
+  description: Resume a paused Smart Timer.
+  target:
+    entity:
+      integration: smart_timer
+
+toggle:
+  name: Toggle
+  description: Pause if running, otherwise start/resume.
+  target:
+    entity:
+      integration: smart_timer
+
+reset:
+  name: Reset
+  description: Reset a Smart Timer back to its initial duration (idle).
+  target:
+    entity:
+      integration: smart_timer
+
+fire:
+  name: Fire
+  description: Immediately fire the on-fire event and play the configured sound.
+  target:
+    entity:
+      integration: smart_timer
+
+set_sound:
+  name: Set sound
+  description: Update the sound configuration of a Smart Timer at runtime.
+  target:
+    entity:
+      integration: smart_timer
+  fields:
+    media_player:
+      name: Media player
+      description: Media player entity to play the sound on.
+      required: false
+      selector:
+        entity:
+          domain: media_player
+    sound_url:
+      name: Sound URL
+      description: URL of an audio file to play.
+      required: false
+      selector:
+        text:
+          type: url
+    sound_path:
+      name: Sound path
+      description: Local path (or www:// URL) of an audio file to play.
+      required: false
+      selector:
+        text:
+    sound_volume:
+      name: Volume
+      description: Volume percentage to play at.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: '%'
