@@ -226,7 +226,7 @@ kitchen timer.wav by KeyKrusher — https://freesound.org/s/154954/ — License:
 
 https://creativecommons.org/licenses/by/4.0/
 
-The bundled file was transcoded from the public Freesound HQ preview to 16-bit PCM WAV. See `custom_components/smart_timer/sounds/ATTRIBUTION.md`.
+The bundled file is the original recording, unmodified. See `custom_components/smart_timer/sounds/ATTRIBUTION.md`.
 
 ## License
 
