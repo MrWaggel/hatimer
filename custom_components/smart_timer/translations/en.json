@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "Add a Smart Timer",
-        "description": "Create a new Smart Timer device. You can create as many as you like.\nRemember: the initial countdown duration you set here is the value used whenever the timer is reset.",
+        "description": "Create a new Smart Timer device. You can create as many as you like.\nThe default duration is what RESET returns to. Use 0 for a kitchen timer that starts empty.",
         "data": {
           "name": "Timer name",
-          "initial_seconds": "Initial countdown duration"
+          "initial_seconds": "Default duration"
         },
         "data_description": {
-          "name": "A friendly name used for the device and entity, e.g. \u201cPizza\u201d.",
-          "initial_seconds": "Countdown length in seconds. Max is {max}."
+          "name": "A friendly name used for the device and entity, e.g. \u201cKitchen\u201d.",
+          "initial_seconds": "Seconds. 0 is allowed. Maximum is {max}. Reset always returns to this value."
         }
       }
     },
@@ -24,13 +24,22 @@
   "options": {
     "step": {
       "init": {
-        "title": "Smart Timer sound",
-        "description": "Choose what plays when the timer reaches zero. Configure a media player, a sound URL, or a local file path.\n\nWhen a media player fires, the integration emits the event `smart_timer_on_fire` that you can hook into with automations.",
+        "title": "Smart Timer",
+        "description": "Default duration is used by RESET, including 0.\n\nSound is optional. The bundled kitchen timer sound plays on the selected media player unless you pick a custom file or no sound.\n\nkitchen timer.wav by KeyKrusher \u2014 https://freesound.org/s/154954/ \u2014 License: Attribution 4.0",
         "data": {
-          "media_player": "Media player (optional)",
-          "sound_url": "Sound URL (optional)",
-          "sound_path": "Sound file path (optional)",
+          "default_seconds": "Default duration",
+          "sound_source": "Sound",
+          "media_player": "Media player",
+          "sound_url": "Custom sound URL",
+          "sound_path": "Custom sound file path",
           "sound_volume": "Volume"
+        },
+        "data_description": {
+          "default_seconds": "RESET returns to this value. 0 is allowed.",
+          "sound_source": "Bundled kitchen timer, your own file, or no sound.",
+          "media_player": "Required only if you want a sound to play.",
+          "sound_url": "Used when Sound is set to custom.",
+          "sound_path": "Local path, used when Sound is set to custom and no URL is set."
         }
       }
     }

@@ -20,14 +20,20 @@ from .const import (
     ATTR_SOUND,
     ATTR_TIMER_STATE,
     ATTR_TOTAL_SECONDS,
+    ATTR_DEFAULT_SECONDS,
+    CONF_DEFAULT_SECONDS,
     CONF_INITIAL_SECONDS,
     CONF_MEDIA_PLAYER,
     CONF_SOUND_PATH,
+    CONF_SOUND_SOURCE,
     CONF_SOUND_URL,
     CONF_SOUND_VOLUME,
     DEFAULT_INITIAL_SECONDS,
     DEFAULT_SOUND_VOLUME,
     DOMAIN,
+    SOUND_CUSTOM,
+    SOUND_DEFAULT,
+    SOUND_NONE,
     EVENT_ATTR_DEVICE_ID,
     EVENT_ATTR_ENTITY_ID,
     EVENT_ATTR_TIMER_NAME,
@@ -113,6 +119,7 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
             ATTR_TIMER_STATE: self._engine.state,
             ATTR_REMAINING_SECONDS: int(round(self._engine.remaining)),
             ATTR_TOTAL_SECONDS: int(round(self._engine.total)),
+            ATTR_DEFAULT_SECONDS: int(round(self._engine.default)),
             ATTR_FORMATTED: format_seconds(self._engine.remaining),
             ATTR_SOUND: self.sound_summary,
             ATTR_DEVICE_ID: self.device_id,
@@ -133,9 +140,28 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
     def sound_summary(self) -> str | None:
         """Human description of the configured sound."""
         opts = self._options()
-        if opts.get(CONF_MEDIA_PLAYER):
-            return f"media_player:{opts[CONF_MEDIA_PLAYER]}"
-        return opts.get(CONF_SOUND_URL) or opts.get(CONF_SOUND_PATH) or None
+        source = opts.get(CONF_SOUND_SOURCE)
+        custom = opts.get(CONF_SOUND_URL) or opts.get(CONF_SOUND_PATH)
+        if source == SOUND_NONE:
+            return None
+        if source == SOUND_CUSTOM:
+            return custom
+        if source == SOUND_DEFAULT or not custom:
+            return "kitchen-timer.wav"
+        return custom
+
+    def _configured_default(self) -> float:
+        opts = self._options()
+        if opts.get(CONF_DEFAULT_SECONDS) is not None:
+            return float(opts[CONF_DEFAULT_SECONDS])
+        return float(self.entry.data.get(CONF_INITIAL_SECONDS, DEFAULT_INITIAL_SECONDS))
+
+    def apply_configured_default(self) -> None:
+        """Pick up a default changed in options. Idle timers snap to it."""
+        self._engine.set_default(self._configured_default())
+        if self._engine.state == "idle":
+            self._engine.remaining = self._engine.default
+            self._engine.total = self._engine.default
 
     def _options(self) -> dict:
         entry = self.hass.config_entries.async_get_entry(self.entry.entry_id)
@@ -199,8 +225,9 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
         self._publish()
 
     def reset(self) -> None:
-        """Reset to the initial duration."""
+        """Reset to the configured default duration, including 0."""
         self._unschedule_tick()
+        self._engine.set_default(self._configured_default())
         self._engine.reset()
         self._publish()
 
@@ -261,10 +288,24 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
     async def _fire(self) -> None:
         self.fire()
 
+    def _sound_content(self) -> str | None:
+        """URL or path to play. Bundled kitchen timer is the default."""
+        opts = self._options()
+        source = opts.get(CONF_SOUND_SOURCE)
+        custom = opts.get(CONF_SOUND_URL) or opts.get(CONF_SOUND_PATH)
+        if source == SOUND_NONE:
+            return None
+        if source == SOUND_CUSTOM:
+            return custom or None
+        # Explicit default, or an older entry with no custom file.
+        if source == SOUND_DEFAULT or not custom:
+            return self.hass.data.get(DOMAIN, {}).get("default_sound_url")
+        return custom
+
     async def _play_sound(self) -> None:
         opts = self._options()
         player = opts.get(CONF_MEDIA_PLAYER)
-        content = opts.get(CONF_SOUND_URL) or opts.get(CONF_SOUND_PATH)
+        content = self._sound_content()
         volume = opts.get(CONF_SOUND_VOLUME, DEFAULT_SOUND_VOLUME)
         try:
             if player and volume is not None:
@@ -311,8 +352,12 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
         """Restore remaining time after a restart. Never auto-resume."""
         await super().async_added_to_hass()
         self.hass.data.setdefault(DOMAIN, {})[self.entity_id] = self
+        self._engine.set_default(self._configured_default())
         last = await self.async_get_last_state()
-        if last is not None:
+        if last is None:
+            self._engine.remaining = self._engine.default
+            self._engine.total = self._engine.default
+        else:
             attrs = last.attributes or {}
             try:
                 remaining = float(attrs.get(ATTR_REMAINING_SECONDS, self._engine.remaining))
@@ -326,6 +371,7 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
                 remaining=remaining,
                 total=total,
                 state=str(attrs.get(ATTR_TIMER_STATE, "idle")),
+                default=self._configured_default(),
             )
         self._publish()
 

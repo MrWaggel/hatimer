@@ -80,14 +80,30 @@ def test_tick_hits_zero_once_and_stays_non_negative():
     assert engine.remaining == 0
 
 
-def test_triple_path_reset_and_restart():
+def test_reset_returns_to_default_not_added_time():
     engine = TimerEngine(30)
-    engine.add_time(10, now=0)
+    engine.add_time(90, now=0)
+    assert engine.remaining == 120
+    assert engine.default == 30
     engine.reset()
     assert engine.state == STATE_IDLE
-    assert engine.remaining == engine.total
-    engine.start(now=5)
+    assert engine.remaining == 30
+    assert engine.default == 30
+
+
+def test_default_zero_stays_idle_until_time_is_added():
+    engine = TimerEngine(0)
+    assert engine.remaining == 0
+    engine.start(now=0)
+    assert engine.state == STATE_IDLE
+    assert engine.tick(now=1) is False
+    engine.add_time(10, now=2)
     assert engine.state == STATE_RUNNING
+    assert engine.remaining == 10
+    engine.reset()
+    assert engine.state == STATE_IDLE
+    assert engine.remaining == 0
+    assert engine.default == 0
 
 
 def test_finished_start_restarts_from_total():
@@ -109,13 +125,17 @@ def test_fire_dedupes_card_and_ticker():
 
 
 def test_restore_running_becomes_paused():
-    engine = TimerEngine(300)
-    engine.restore(remaining=42, total=300, state=STATE_RUNNING)
+    engine = TimerEngine(0)
+    engine.restore(remaining=42, total=90, state=STATE_RUNNING, default=0)
     assert engine.state == STATE_PAUSED
     assert engine.remaining == 42
-    engine.restore(remaining=0, total=300, state=STATE_FINISHED)
+    assert engine.default == 0
+    engine.reset()
+    assert engine.remaining == 0
+    engine.restore(remaining=0, total=300, state=STATE_FINISHED, default=300)
     assert engine.state == STATE_FINISHED
     assert engine.remaining == 0
+    assert engine.default == 300
 
 
 if __name__ == "__main__":

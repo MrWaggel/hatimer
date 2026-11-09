@@ -209,8 +209,9 @@ let SmartTimerCard = class SmartTimerCard extends i {
      * dedupes, so automations run once. Opening a dashboard on an already
      * finished timer does not re-fire.
      */
-    _maybeFire(display, state, remaining) {
-        const atZero = display === "00:00:00" || (state === "finished" && remaining <= 0);
+    _maybeFire(_display, state, remaining) {
+        // Idle at 00:00:00 is a valid default (kitchen timer), not a completion.
+        const atZero = state === "finished";
         if (!atZero) {
             if (state === "running" || (Number.isFinite(remaining) && remaining > 0)) {
                 this._seenRunning = true;
@@ -295,14 +296,13 @@ let SmartTimerCard = class SmartTimerCard extends i {
         <div class="card-content">
           <div class="header">
             <span class="title">${title}</span>
+            <span class="status ${this._timerState}">${this._timerState}</span>
           </div>
           <div
             class="clock ${this._timerState === "running" ? "running" : ""} ${this._timerState === "finished" ? "finished" : ""}"
           >
             ${this._display}
           </div>
-          <div class="status ${this._timerState}">${this._timerState}</div>
-          <div class="hint">Tap to pause or resume. Triple-tap to reset.</div>
           ${this._renderButtons()}
         </div>
       </ha-card>
@@ -312,95 +312,85 @@ let SmartTimerCard = class SmartTimerCard extends i {
 SmartTimerCard.styles = i$3 `
     ha-card {
       overflow: hidden;
-      background: var(--card-background-color, #fff);
-      color: var(--primary-text-color, #000);
     }
     .card-content {
-      padding: 16px;
+      padding: 8px 12px 10px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 6px;
+      color: var(--primary-text-color);
     }
     .header {
       display: flex;
-      align-items: center;
+      align-items: baseline;
       justify-content: space-between;
+      gap: 8px;
     }
     .title {
-      font-size: 1.1rem;
-      font-weight: 500;
+      font-size: var(--ha-font-size-m, 1rem);
+      font-weight: var(--ha-font-weight-medium, 500);
+      color: var(--primary-text-color);
     }
     .clock {
-      font-family: "Roboto Mono", ui-monospace, monospace;
-      font-size: 3.2rem;
-      font-weight: 700;
-      line-height: 1;
-      letter-spacing: 2px;
+      font-family: var(--ha-font-family-code, var(--code-font-family, ui-monospace, monospace));
+      font-size: 1.6rem;
+      font-weight: var(--ha-font-weight-medium, 500);
+      line-height: 1.1;
+      letter-spacing: 0.04em;
       text-align: center;
       font-variant-numeric: tabular-nums;
-      background: var(--secondary-background-color, #f2f2f2);
-      border-radius: 12px;
-      padding: 18px 8px;
+      color: var(--primary-text-color);
+      padding: 2px 0 4px;
     }
     .clock.running {
-      color: var(--state-active-color, #07c);
-      box-shadow: inset 0 0 0 2px var(--state-active-color, #07c);
+      color: var(--primary-color);
     }
     .clock.finished {
-      color: var(--error-color, #db4437);
-      animation: pulse 1s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      50% {
-        opacity: 0.45;
-      }
+      color: var(--error-color);
     }
     .status {
       text-transform: uppercase;
-      font-size: 0.7rem;
-      letter-spacing: 1px;
-      text-align: center;
-      color: var(--secondary-text-color, #888);
+      font-size: var(--ha-font-size-xs, 0.7rem);
+      letter-spacing: 0.04em;
+      color: var(--secondary-text-color);
     }
     .status.running {
-      color: var(--state-active-color, #07c);
+      color: var(--primary-color);
     }
     .status.finished {
-      color: var(--error-color, #db4437);
+      color: var(--error-color);
     }
     .hint {
-      text-align: center;
-      font-size: 0.75rem;
-      color: var(--secondary-text-color, #aaa);
+      color: var(--secondary-text-color);
+      font-size: var(--ha-font-size-s, 0.85rem);
     }
     .buttons {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
     }
     button {
       border: none;
-      border-radius: 10px;
-      padding: 12px 8px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      letter-spacing: 0.5px;
+      border-radius: var(--ha-card-border-radius, var(--mdc-shape-small, 4px));
+      padding: 8px 4px;
+      font-size: var(--ha-font-size-s, 0.8rem);
+      font-weight: var(--ha-font-weight-medium, 500);
+      letter-spacing: 0.02em;
       cursor: pointer;
-      color: var(--primary-text-color, #000);
-      background: var(--secondary-background-color, #f2f2f2);
+      color: var(--primary-text-color);
+      background: var(--secondary-background-color);
       -webkit-tap-highlight-color: transparent;
       user-select: none;
     }
     button:active {
-      transform: scale(0.96);
+      filter: brightness(0.92);
     }
     button.inc {
-      color: var(--state-active-color, #07c);
+      color: var(--primary-color);
     }
     button.pause {
       grid-column: 1 / -1;
-      color: #fff;
-      background: var(--state-inactive-color, #888);
+      color: var(--primary-text-color);
     }
   `;
 __decorate([

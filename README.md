@@ -14,8 +14,10 @@ choose and fires the `smart_timer_on_fire` event you can hook into.
   (e.g. *Pizza*, *Episode*, *Yoga*), each with its own device registry entry.
 - **Config Flow** — add a timer from **Settings → Devices & services → Add
   integration**.
-- **Options Flow** — per-timer, configure an arbitrary sound: a media player
-  entity, a sound URL, or a local file path.
+- **Default duration** — each timer has a configurable default, including 0.
+  RESET always returns to that default, not to time you added.
+- **Options Flow** — change the default, and optionally a sound: the bundled
+  kitchen timer, a media player plus your own URL/path, or no sound.
 - **Services** — `smart_timer.add_time`, `set_time`, `start`, `pause`,
   `resume`, `toggle`, `reset`, `set_sound` and `fire`.
 - **Event bus** — fires `smart_timer_on_fire` when a timer hits zero, with the
@@ -80,13 +82,16 @@ restart, hard-refresh the browser once so the card module loads.
 ### 2. Add timer(s)
 
 1. **Settings → Devices & services → Add integration → Smart Timer**.
-2. Enter a **name** and an **initial countdown duration**.
+2. Enter a **name** and a **default duration** in seconds. `0` is valid (a kitchen timer starts at `00:00:00` and you add time from the card).
 3. Repeat for as many timers as you want. Each one is its own device.
 
-Open the entry's **Configure** / options menu to set the sound:
+Open the entry's **Configure** menu to change the default, or the sound:
 
-- a **media player** entity, and/or
-- a **sound URL** or **local file path** (for example `/config/www/ding.mp3`).
+- **Bundled kitchen timer** (default, not required)
+- **Custom URL or file**
+- **No sound**
+
+A media player is only needed if you want sound. The bundled file is copied to `/config/www/smart_timer/kitchen-timer.wav` and played from there.
 
 ### 3. Add the dashboard card
 
@@ -109,7 +114,8 @@ show_buttons: true  # optional (default true)
 - **PAUSE / RESET** single tap pauses or resumes. The tap waits a fraction of
   a second so it can tell a single tap from a triple tap.
 - **Triple-tap** (three presses within 0.8&nbsp;s) **resets** the timer to its
-  initial duration. The extra taps are not also treated as pause/resume.
+  configured default, including `00:00:00`. Added time is discarded. The extra
+  taps are not also treated as pause/resume.
 - When the countdown reaches `00:00:00` the ticker fires `smart_timer.fire`.
   The card calls the same service if it watched the countdown hit zero. A
   second call within 2 seconds is ignored, so automations run once. Opening a
@@ -211,6 +217,16 @@ Rebuild the frontend source, then copy the `dist/smart-timer-card.js` bundle (or
 `www/community/smart-timer-card/smart-timer-card.js`) into your HA config.
 
 ---
+
+## Sound attribution
+
+Default alarm, not mandatory:
+
+kitchen timer.wav by KeyKrusher — https://freesound.org/s/154954/ — License: Attribution 4.0
+
+https://creativecommons.org/licenses/by/4.0/
+
+The bundled file was transcoded from the public Freesound HQ preview to 16-bit PCM WAV. See `custom_components/smart_timer/sounds/ATTRIBUTION.md`.
 
 ## License
 

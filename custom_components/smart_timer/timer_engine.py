@@ -35,12 +35,17 @@ def format_seconds(seconds: float) -> str:
 class TimerEngine:
     """Countdown state machine driven by a caller-supplied monotonic clock."""
 
-    def __init__(self, total: float) -> None:
-        self.total = clamp_seconds(total if total else 0)
-        self.remaining = self.total
+    def __init__(self, default: float) -> None:
+        self.default = clamp_seconds(default if default else 0)
+        self.total = self.default
+        self.remaining = self.default
         self.state = STATE_IDLE
         self._end: float | None = None
         self._last_fire_at: float | None = None
+
+    def set_default(self, seconds: float) -> None:
+        """Change the configured reset value. Does not touch a running countdown."""
+        self.default = clamp_seconds(seconds)
 
     def sync(self, now: float) -> None:
         """Recompute remaining from the deadline. Never goes negative."""
@@ -48,10 +53,18 @@ class TimerEngine:
             self.remaining = clamp_seconds(self._end - now)
 
     def start(self, now: float) -> None:
-        """Start or resume from the current remaining value."""
+        """Start or resume from the current remaining value.
+
+        A finished timer restarts from the configured default. A default of 0
+        stays idle instead of immediately finishing and firing.
+        """
         if self.remaining <= 0:
-            self.remaining = self.total
+            self.remaining = self.default
         self.remaining = clamp_seconds(self.remaining)
+        if self.remaining <= 0:
+            self._end = None
+            self.state = STATE_IDLE
+            return
         self._end = now + self.remaining
         self.state = STATE_RUNNING
         # A new run may complete immediately; don't suppress that fire.
@@ -73,10 +86,15 @@ class TimerEngine:
             self.start(now)
 
     def reset(self) -> None:
-        """Return to the initial duration and idle."""
+        """Return to the configured default duration and idle.
+
+        Added time is discarded. The default itself is never changed by
+        ``add_time`` or ``set_time``.
+        """
         self._end = None
         self.state = STATE_IDLE
-        self.remaining = self.total
+        self.remaining = self.default
+        self.total = self.default
         self._last_fire_at = None
 
     def set_time(self, seconds: float, now: float) -> None:
@@ -115,9 +133,22 @@ class TimerEngine:
         self._last_fire_at = now
         return True
 
-    def restore(self, *, remaining: float, total: float, state: str) -> None:
-        """Restore after a restart. A running timer comes back paused."""
-        self.total = clamp_seconds(total if total else self.total)
+    def restore(
+        self,
+        *,
+        remaining: float,
+        total: float,
+        state: str,
+        default: float | None = None,
+    ) -> None:
+        """Restore after a restart. A running timer comes back paused.
+
+        ``default`` is the configured reset value and is not replaced by the
+        remaining time of the run that was in progress.
+        """
+        if default is not None:
+            self.default = clamp_seconds(default)
+        self.total = clamp_seconds(total if total else self.default)
         self.remaining = clamp_seconds(remaining)
         self._end = None
         self._last_fire_at = None
@@ -127,4 +158,3 @@ class TimerEngine:
             self.state = STATE_FINISHED
         else:
             self.state = STATE_IDLE
-        self.total = max(self.total, self.remaining)

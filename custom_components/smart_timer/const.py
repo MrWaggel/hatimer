@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.const import Platform
 
 DOMAIN = "smart_timer"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 # Frontend bundle served by the integration (Marketplace installs one type).
@@ -16,13 +16,21 @@ CARD_URL = "/smart_timer/smart-timer-card.js"
 # ---------------------------------------------------------------------------
 CONF_TIMER_NAME = "name"
 CONF_INITIAL_SECONDS = "initial_seconds"
+CONF_DEFAULT_SECONDS = "default_seconds"
 CONF_MEDIA_PLAYER = "media_player"
 CONF_SOUND_URL = "sound_url"
 CONF_SOUND_PATH = "sound_path"
 CONF_SOUND_VOLUME = "sound_volume"
+CONF_SOUND_SOURCE = "sound_source"
 
-DEFAULT_INITIAL_SECONDS = 300  # 5 minutes
+# 0 is valid: a kitchen timer starts empty and time is added from the card.
+DEFAULT_INITIAL_SECONDS = 0
 DEFAULT_SOUND_VOLUME = 100
+
+SOUND_DEFAULT = "default"
+SOUND_CUSTOM = "custom"
+SOUND_NONE = "none"
+DEFAULT_SOUND_FILE = "kitchen-timer.wav"
 
 # Maximum seconds a single timer can hold (guards against runaway values).
 MAX_SECONDS = 24 * 60 * 60  # 24 hours
@@ -51,6 +59,7 @@ STATE_FINISHED = "finished"
 ATTR_TIMER_STATE = "state"
 ATTR_REMAINING_SECONDS = "remaining_seconds"
 ATTR_TOTAL_SECONDS = "total_seconds"
+ATTR_DEFAULT_SECONDS = "default_seconds"
 ATTR_FORMATTED = "formatted"
 ATTR_SOUND = "sound"
 ATTR_DEVICE_ID = "device_id"

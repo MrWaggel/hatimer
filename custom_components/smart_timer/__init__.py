@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers.network import get_url
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -16,6 +18,7 @@ from .const import (
     ATTR_MINUTES,
     ATTR_SECONDS,
     CARD_URL,
+    DEFAULT_SOUND_FILE,
     DOMAIN,
     PLATFORMS,
     SERVICE_ADD_TIME,
@@ -36,12 +39,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up one Smart Timer device."""
     hass.data.setdefault(DOMAIN, {})
     await _async_register_card(hass)
+    _install_default_sound(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(async_update_listener))
 
     if not hass.data[DOMAIN].get("services_registered"):
         _register_services(hass)
         hass.data[DOMAIN]["services_registered"] = True
     return True
+
+
+async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Apply a new default duration without reloading a running countdown."""
+    for entity in hass.data.get(DOMAIN, {}).values():
+        if getattr(getattr(entity, "entry", None), "entry_id", None) != entry.entry_id:
+            continue
+        entity.apply_configured_default()
+        entity.async_write_ha_state()
+
+
+def _install_default_sound(hass: HomeAssistant) -> None:
+    """Copy the bundled alarm into /config/www so media players can fetch it.
+
+    The sound is the default, not a requirement. A timer with sound source
+    "none", or with its own URL/path, does not play this file.
+    """
+    src = Path(__file__).parent / "sounds" / DEFAULT_SOUND_FILE
+    if not src.is_file():
+        _LOGGER.warning("Bundled kitchen timer sound missing at %s", src)
+        return
+    dest_dir = Path(hass.config.path("www", "smart_timer"))
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / DEFAULT_SOUND_FILE
+    if not dest.exists() or dest.stat().st_size != src.stat().st_size:
+        shutil.copyfile(src, dest)
+    try:
+        base = get_url(hass).rstrip("/")
+    except Exception:  # noqa: BLE001 - fall back to a relative URL
+        _LOGGER.debug("Could not resolve Home Assistant URL for the default sound")
+        base = ""
+    hass.data[DOMAIN]["default_sound_url"] = f"{base}/local/smart_timer/{DEFAULT_SOUND_FILE}"
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
