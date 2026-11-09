@@ -7,21 +7,6 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
-  repository:
-    name: Repository metadata
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      administration: write
-    steps:
-      - name: Set description and topics
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh api --method PATCH "repos/${GITHUB_REPOSITORY}" -f description='Configurable countdown timers for Home Assistant' -F has_issues=true
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/topics" -f 'names[]=home-assistant' -f 'names[]=homeassistant' -f 'names[]=hacs' -f 'names[]=integration' -f 'names[]=custom-component' -f 'names[]=timer'
-
   hacs:
     name: HACS Action (integration)
     runs-on: ubuntu-latest
