@@ -182,54 +182,6 @@ triggers:
 
 You can also add this from the device page: **Add automation** → **Timer finished**.
 
-## Automations: the `on-fire` event
-
-When a timer reaches zero it fires `smart_timer_on_fire` with:
-
-| Key | Example value |
-| --- | --- |
-| `device_id` | the timer device registry id |
-| `entity_id` | `sensor.pizza` |
-| `name` | `Pizza` |
-| `total_seconds` | `300` |
-
-```yaml
-alias: Smart Timer finished
-triggers:
-  - trigger: event
-    event_type: smart_timer_on_fire
-    event_data:
-      entity_id: sensor.pizza
-actions:
-  - service: light.turn_on
-    target:
-      entity_id: light.kitchen
-  - service: notify.mobile_app_phone
-    data:
-      title: Timer done
-      message: "{{ trigger.event.data.name }} is finished!"
-```
-
-Flicker a light when *any* timer finishes:
-
-```yaml
-alias: Any timer done
-triggers:
-  - trigger: event
-    event_type: smart_timer_on_fire
-actions:
-  - repeat:
-      count: 3
-      sequence:
-        - service: light.turn_on
-          target: { entity_id: light.kitchen }
-        - service: light.turn_off
-          target: { entity_id: light.kitchen }
-        - delay: "00:00:00.5"
-```
-
-See [examples/automations.yaml](./examples/automations.yaml) for more.
-
 ---
 
 ## Developer

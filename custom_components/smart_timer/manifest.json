@@ -1,6 +1,9 @@
 {
   "domain": "smart_timer",
   "name": "Smart Timer",
+  "categories": [
+    "helpers"
+  ],
   "codeowners": [
     "@MrWaggel"
   ],
@@ -10,5 +13,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/MrWaggel/hatimer/issues",
   "requirements": [],
-  "version": "1.5.1"
+  "version": "1.6.0"
 }
