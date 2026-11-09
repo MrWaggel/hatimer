@@ -5,7 +5,11 @@ from __future__ import annotations
 from homeassistant.const import Platform
 
 DOMAIN = "smart_timer"
+VERSION = "1.1.0"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+# Frontend bundle served by the integration (Marketplace installs one type).
+CARD_URL = "/smart_timer/smart-timer-card.js"
 
 # ---------------------------------------------------------------------------
 # Config flow / options keys

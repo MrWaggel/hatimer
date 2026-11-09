@@ -6,8 +6,6 @@ dashboard card with interactive `+10 SEC` / `+1 MIN` / `+5 MIN` shortcuts and a
 triple-tap-to-reset action. When a timer reaches zero it plays a sound you
 choose and fires the `smart_timer_on_fire` event you can hook into.
 
-![Smart Timer card](https://raw.githubusercontent.com/example/smart-timer/main/docs/screenshot.png)
-
 ---
 
 ## Features
@@ -59,56 +57,40 @@ smart-timer/
 
 ## Installation
 
+Marketplace only accepts **GitHub** repositories. This project lives at
+[github.com/MrWaggel/hatimer](https://github.com/MrWaggel/hatimer).
+
 ### 1. Install the integration
 
-**Option A — Marketplace / HACS**
-
-Add this repository to your installed
-[Marketplace](https://contributors.home-assistant.io/glossary/marketplace/) or
-[HACS](https://hacs.xyz) and install the **Smart Timer** integration. Restart
-Home Assistant.
-
-**Option B — Manual**
-
-Copy the `custom_components/smart_timer/` folder into:
+**Settings → Marketplace → Add from a GitHub link** and paste:
 
 ```
-<config>/custom_components/smart_timer/
+https://github.com/MrWaggel/hatimer
 ```
 
-then restart Home Assistant.
+Install the **Smart Timer** integration, then restart Home Assistant.
+
+The integration registers the dashboard card itself (it is served from the
+integration folder). You do not add a separate dashboard resource. After the
+restart, hard-refresh the browser once so the card module loads.
+
+**Manual install:** copy `custom_components/smart_timer/` into
+`<config>/custom_components/smart_timer/` and restart.
 
 ### 2. Add timer(s)
 
-1. Go to **Settings → Devices & services → Add integration → Smart Timer**.
+1. **Settings → Devices & services → Add integration → Smart Timer**.
 2. Enter a **name** and an **initial countdown duration**.
-3. Repeat to create more timers.
+3. Repeat for as many timers as you want. Each one is its own device.
 
-After creation, open the timer's **Options** (the three-dot menu on the
-integration entry) to configure the **sound**:
+Open the entry's **Configure** / options menu to set the sound:
 
-- a **media player** entity plus an optional URL/path, **or**
-- a **sound URL** / **local file path** (e.g. `/config/www/ding.mp3`).
-
-> Note: files must live inside the `<config>/www` static folder to be served as
-> `/local/...`.
+- a **media player** entity, and/or
+- a **sound URL** or **local file path** (for example `/config/www/ding.mp3`).
 
 ### 3. Add the dashboard card
 
-Register the card as a dashboard resource (or use
-`frontend: extra_module_url`), then reload the dashboard:
-
-```yaml
-# configuration.yaml
-frontend:
-  extra_module_url:
-    - /local/community/smart-timer-card/smart-timer-card.js
-```
-
-> If installed via Marketplace/HACS as a *dashboard plugin* category, the
-> resource is added automatically.
-
-Add the card to your dashboard:
+Edit a dashboard → **Add card** → **Smart Timer** → pick the timer entity.
 
 ```yaml
 type: custom:smart-timer-card
@@ -124,11 +106,14 @@ show_buttons: true  # optional (default true)
 - The countdown is always shown as strict `HH:MM:SS`.
 - **`+10 SEC` / `+1 MIN` / `+5 MIN`** immediately start/resume the timer and
   add the chosen amount to the current countdown.
-- The large button **single tap** pauses / resumes / starts the timer.
-- **Triple-tap** the large button (three presses within 1.5&nbsp;s) **resets**
-  the timer to its initial value.
-- When the countdown reaches `00:00:00` the integration fires
-  `smart_timer_on_fire` and plays the configured sound.
+- **PAUSE / RESET** single tap pauses or resumes. The tap waits a fraction of
+  a second so it can tell a single tap from a triple tap.
+- **Triple-tap** (three presses within 0.8&nbsp;s) **resets** the timer to its
+  initial duration. The extra taps are not also treated as pause/resume.
+- When the countdown reaches `00:00:00` the ticker fires `smart_timer.fire`.
+  The card calls the same service if it watched the countdown hit zero. A
+  second call within 2 seconds is ignored, so automations run once. Opening a
+  dashboard on a timer that is already finished does not fire again.
 
 ---
 

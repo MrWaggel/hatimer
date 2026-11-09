@@ -72,6 +72,8 @@ const t=t=>(e,o)=>{ void 0!==o?o.addInitializer(()=>{customElements.define(t,e);
  * SPDX-License-Identifier: BSD-3-Clause
  */function r(r){return n({...r,state:true,attribute:false})}
 
+const TRIPLE_TAP_WINDOW_MS = 800;
+const TAP_SETTLE_MS = 350;
 /** Format seconds as a strict HH:MM:SS string. */
 function formatSecondsHMS(total) {
     const s = Math.max(0, Math.floor(total));
@@ -80,77 +82,149 @@ function formatSecondsHMS(total) {
     const sec = s % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
-/** Parse a strict HH:MM:SS string into whole seconds. */
-function parseHMS(value) {
-    const parts = String(value || "").trim().split(":");
-    if (parts.length < 3)
-        return 0;
-    const [h = 0, m = 0, s = 0] = parts.map((p) => Number(p) || 0);
-    return h * 3600 + m * 60 + s;
+/**
+ * Decide a pause-button gesture.
+ * 1 tap (after the settle window) -> toggle. 3+ taps -> reset. 2 taps -> ignore.
+ */
+function resolvePauseGesture(tapCount) {
+    if (tapCount >= 3)
+        return "reset";
+    if (tapCount === 1)
+        return "toggle";
+    return "ignore";
 }
-const TRIPLE_TAP_WINDOW_MS = 1500;
+let SmartTimerCardEditor = class SmartTimerCardEditor extends i {
+    constructor() {
+        super(...arguments);
+        this._config = { entity: "" };
+    }
+    setConfig(config) {
+        this._config = { show_buttons: true, ...config };
+    }
+    _valueChanged(ev) {
+        const config = ev.detail.value;
+        this._config = config;
+        this.dispatchEvent(new CustomEvent("config-changed", {
+            detail: { config },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+    _label(schema) {
+        return ({
+            entity: "Smart Timer",
+            name: "Name",
+            show_buttons: "Show buttons",
+        }[schema.name] || schema.name);
+    }
+    render() {
+        if (!this.hass)
+            return b ``;
+        const schema = [
+            {
+                name: "entity",
+                required: true,
+                selector: { entity: { integration: "smart_timer" } },
+            },
+            { name: "name", selector: { text: {} } },
+            { name: "show_buttons", selector: { boolean: {} } },
+        ];
+        return b `
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${schema}
+        .computeLabel=${this._label}
+        @value-changed=${this._valueChanged}
+      ></ha-form>
+    `;
+    }
+};
+__decorate([
+    n({ attribute: false })
+], SmartTimerCardEditor.prototype, "hass", void 0);
+__decorate([
+    r()
+], SmartTimerCardEditor.prototype, "_config", void 0);
+SmartTimerCardEditor = __decorate([
+    t("smart-timer-card-editor")
+], SmartTimerCardEditor);
 let SmartTimerCard = class SmartTimerCard extends i {
     constructor() {
         super(...arguments);
         this._display = "00:00:00";
         this._timerState = "idle";
-        this._hasError = false;
-        this._tapQueue = [];
+        this._taps = [];
+        /** True once this card has observed a non-zero countdown. */
+        this._seenRunning = false;
+        this._firedThisZero = false;
+    }
+    static getConfigElement() {
+        return document.createElement("smart-timer-card-editor");
     }
     static getStubConfig() {
         return { entity: "", show_buttons: true };
     }
     setConfig(config) {
-        if (!config || !config.entity) {
-            throw new Error("Please configure a Smart Timer entity for this card.");
+        if (!config || typeof config !== "object") {
+            throw new Error("Invalid card configuration");
         }
-        this.config = { name: "", show_buttons: true, ...config };
+        this.config = { show_buttons: true, name: "", ...config };
     }
     getCardSize() {
         return 3;
     }
     get _entityId() {
-        return this.config.entity;
+        return this.config?.entity || "";
     }
     get _entity() {
-        return this.hass?.states?.[this._entityId];
+        return this._entityId ? this.hass?.states?.[this._entityId] : undefined;
     }
-    willUpdate(changedProperties) {
-        if (changedProperties.has("hass") || changedProperties.has("config")) {
+    willUpdate(changed) {
+        if (changed.has("hass") || changed.has("config")) {
             this._updateFromEntity();
         }
     }
     _updateFromEntity() {
         const entity = this._entity;
         if (!entity) {
-            this._hasError = true;
             this._display = "--:--:--";
+            this._timerState = "unavailable";
             return;
         }
-        this._hasError = false;
         const attrs = entity.attributes || {};
         const formatted = attrs.formatted;
         const remaining = Number(attrs.remaining_seconds);
-        const state = String(attrs.state || entity.state || "idle");
-        let display;
-        if (typeof formatted === "string" && /^\d{1,3}:\d{2}:\d{2}/.test(formatted)) {
-            display = formatted;
-        }
-        else if (Number.isFinite(remaining)) {
-            display = formatSecondsHMS(remaining);
-        }
-        else {
-            display = formatSecondsHMS(parseHMS(entity.state));
-        }
+        const state = String(attrs.state || "idle");
+        const display = typeof formatted === "string" && /^\d{2,}:\d{2}:\d{2}$/.test(formatted)
+            ? formatted
+            : formatSecondsHMS(Number.isFinite(remaining) ? remaining : 0);
         this._display = display;
         this._timerState = state;
-        // Completion is handled by the backend: when the countdown reaches zero the
-        // integration fires `smart_timer_on_fire` and plays the configured sound.
-        // We only reflect the finished state here and do not re-fire the event, to
-        // avoid triggering user automations twice.
+        this._maybeFire(display, state, remaining);
+    }
+    /**
+     * When a countdown this card has been watching reaches 00:00:00, call the
+     * backend `fire` service. The integration also fires from its ticker and
+     * dedupes, so automations run once. Opening a dashboard on an already
+     * finished timer does not re-fire.
+     */
+    _maybeFire(display, state, remaining) {
+        const atZero = display === "00:00:00" || (state === "finished" && remaining <= 0);
+        if (!atZero) {
+            if (state === "running" || (Number.isFinite(remaining) && remaining > 0)) {
+                this._seenRunning = true;
+            }
+            this._firedThisZero = false;
+            return;
+        }
+        if (!this._seenRunning || this._firedThisZero || !this._entityId)
+            return;
+        this._firedThisZero = true;
+        void this._callService("fire");
     }
     async _callService(service, data = {}) {
-        if (!this.hass)
+        if (!this.hass || !this._entityId)
             return;
         await this.hass.callService("smart_timer", service, {
             entity_id: this._entityId,
@@ -158,67 +232,77 @@ let SmartTimerCard = class SmartTimerCard extends i {
         });
     }
     _onIncrement(seconds) {
-        // Increment buttons are single-purpose: add time and start/resume.
         void this._callService("add_time", { seconds });
     }
     /**
-     * PAUSE button multi-tap logic:
-     *   - Triple tap within 1.5 s -> reset the timer to its initial value.
-     *   - Any single tap (otherwise) -> toggle pause / resume / start.
+     * Single tap toggles pause/resume. Triple tap (3 clicks inside 800 ms)
+     * resets. The single-tap action waits out the settle window so a triple
+     * tap does not also pause and resume.
      */
     _onPauseButton(ev) {
+        ev.preventDefault();
         ev.stopPropagation();
         const now = Date.now();
-        this._tapQueue.push(now);
-        this._tapQueue = this._tapQueue.filter((t) => now - t <= TRIPLE_TAP_WINDOW_MS);
-        if (this._tapQueue.length >= 3) {
-            this._tapQueue = [];
+        this._taps = [...this._taps, now].filter((t) => now - t <= TRIPLE_TAP_WINDOW_MS);
+        window.clearTimeout(this._tapTimer);
+        if (resolvePauseGesture(this._taps.length) === "reset") {
+            this._taps = [];
             void this._callService("reset");
             return;
         }
-        void this._callService("toggle");
+        this._tapTimer = window.setTimeout(() => {
+            const gesture = resolvePauseGesture(this._taps.length);
+            this._taps = [];
+            if (gesture === "toggle") {
+                void this._callService("toggle");
+            }
+        }, TAP_SETTLE_MS);
+    }
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        window.clearTimeout(this._tapTimer);
     }
     _renderButtons() {
-        if (this.config.show_buttons === false)
+        if (this.config?.show_buttons === false)
             return b ``;
-        const label = this._timerState === "running"
-            ? "PAUSE"
-            : this._timerState === "idle" || this._timerState === "finished"
-                ? "START"
-                : "RESUME";
         return b `
       <div class="buttons">
         <button class="inc" @click=${() => this._onIncrement(10)}>+10 SEC</button>
         <button class="inc" @click=${() => this._onIncrement(60)}>+1 MIN</button>
         <button class="inc" @click=${() => this._onIncrement(300)}>+5 MIN</button>
-        <button class="pause" @click=${(e) => this._onPauseButton(e)}>${label}</button>
+        <button class="pause" @click=${(e) => this._onPauseButton(e)}>
+          PAUSE / RESET
+        </button>
       </div>
     `;
     }
     render() {
-        const title = this.config.name || this._entity?.attributes?.friendly_name || "Smart Timer";
-        const running = this._timerState === "running";
+        if (!this._entityId) {
+            return b `
+        <ha-card>
+          <div class="card-content">
+            <div class="title">Smart Timer</div>
+            <div class="hint">Pick a Smart Timer entity in the card editor.</div>
+          </div>
+        </ha-card>
+      `;
+        }
+        const title = this.config.name ||
+            this._entity?.attributes?.friendly_name ||
+            "Smart Timer";
         return b `
       <ha-card>
         <div class="card-content">
           <div class="header">
             <span class="title">${title}</span>
-            ${this._entity
-            ? b `
-                  <ha-state-badge
-                    .hass=${this.hass}
-                    .stateObj=${this._entity}
-                  ></ha-state-badge>
-                `
-            : ""}
           </div>
-          <div class="clock ${running ? "running" : ""} ${this._timerState === "finished" ? "finished" : ""}">
+          <div
+            class="clock ${this._timerState === "running" ? "running" : ""} ${this._timerState === "finished" ? "finished" : ""}"
+          >
             ${this._display}
           </div>
-          <div class="status ${this._timerState}">
-            ${this._hasError ? "unavailable" : this._timerState}
-          </div>
-          <div class="hint">Triple-tap the large button to reset</div>
+          <div class="status ${this._timerState}">${this._timerState}</div>
+          <div class="hint">Tap to pause or resume. Triple-tap to reset.</div>
           ${this._renderButtons()}
         </div>
       </ha-card>
@@ -230,14 +314,12 @@ SmartTimerCard.styles = i$3 `
       overflow: hidden;
       background: var(--card-background-color, #fff);
       color: var(--primary-text-color, #000);
-      box-shadow: var(--ha-card-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.2));
     }
     .card-content {
       padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 10px;
-      font-family: var(--paper-font-common-base_-_font-family, sans-serif);
     }
     .header {
       display: flex;
@@ -247,17 +329,15 @@ SmartTimerCard.styles = i$3 `
     .title {
       font-size: 1.1rem;
       font-weight: 500;
-      color: var(--primary-text-color, #000);
     }
     .clock {
-      font-family: "Roboto Mono", var(--paper-font-code_-_font-family, monospace);
+      font-family: "Roboto Mono", ui-monospace, monospace;
       font-size: 3.2rem;
       font-weight: 700;
       line-height: 1;
       letter-spacing: 2px;
       text-align: center;
       font-variant-numeric: tabular-nums;
-      color: var(--primary-text-color, #333);
       background: var(--secondary-background-color, #f2f2f2);
       border-radius: 12px;
       padding: 18px 8px;
@@ -290,7 +370,7 @@ SmartTimerCard.styles = i$3 `
     }
     .hint {
       text-align: center;
-      font-size: 0.7rem;
+      font-size: 0.75rem;
       color: var(--secondary-text-color, #aaa);
     }
     .buttons {
@@ -308,13 +388,11 @@ SmartTimerCard.styles = i$3 `
       cursor: pointer;
       color: var(--primary-text-color, #000);
       background: var(--secondary-background-color, #f2f2f2);
-      transition: transform 0.05s ease, filter 0.1s ease;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
     }
     button:active {
       transform: scale(0.96);
-      filter: brightness(0.95);
     }
     button.inc {
       color: var(--state-active-color, #07c);
@@ -323,9 +401,6 @@ SmartTimerCard.styles = i$3 `
       grid-column: 1 / -1;
       color: #fff;
       background: var(--state-inactive-color, #888);
-    }
-    button.pause:active {
-      filter: brightness(0.9);
     }
   `;
 __decorate([
@@ -340,9 +415,6 @@ __decorate([
 __decorate([
     r()
 ], SmartTimerCard.prototype, "_timerState", void 0);
-__decorate([
-    r()
-], SmartTimerCard.prototype, "_hasError", void 0);
 SmartTimerCard = __decorate([
     t("smart-timer-card")
 ], SmartTimerCard);
@@ -350,9 +422,9 @@ window.customCards = window.customCards || [];
 window.customCards.push({
     type: "smart-timer-card",
     name: "Smart Timer",
-    description: "Interactive countdown timer with +/- shortcuts and triple-tap reset.",
-    preview: false,
-    documentationURL: "https://example.com/smart-timer",
+    description: "Countdown with +10s / +1m / +5m and triple-tap reset.",
+    preview: true,
+    documentationURL: "https://github.com/MrWaggel/hatimer",
 });
 
-export { SmartTimerCard };
+export { SmartTimerCard, SmartTimerCardEditor, formatSecondsHMS, resolvePauseGesture };

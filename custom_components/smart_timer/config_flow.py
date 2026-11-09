@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import uuid
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
@@ -21,10 +23,6 @@ from .const import (
     DOMAIN,
     MAX_SECONDS,
 )
-
-
-def _name_selector() -> selector.SelectSelector:
-    return selector.TextSelector()
 
 
 def _seconds_selector() -> selector.NumberSelector:
@@ -47,7 +45,12 @@ def _media_player_selector() -> selector.EntitySelector:
 
 def _volume_selector() -> selector.NumberSelector:
     return selector.NumberSelector(
-        selector.NumberSelectorConfig(min=0, max=100, step=1, unit_of_measurement="%")
+        selector.NumberSelectorConfig(
+            min=0,
+            max=100,
+            step=1,
+            unit_of_measurement="%",
+        )
     )
 
 
@@ -56,27 +59,29 @@ class SmartTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict | None = None
-    ) -> FlowResult:
-        """Handle the initial step to create a new timer instance."""
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> SmartTimerOptionsFlow:
+        """Return the options flow. ``config_entry`` is injected by Home Assistant."""
+        return SmartTimerOptionsFlow()
+
+    async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
+        """Create a new timer. Users can add as many as they want."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            name = user_input.get(CONF_TIMER_NAME, "").strip()
+            name = str(user_input.get(CONF_TIMER_NAME, "")).strip()
             if not name:
                 errors["base"] = "name_required"
             else:
-                # Each instance is uniquely identified by its chosen name.
-                await self.async_set_unique_id(name.lower().replace(" ", "_"))
-                self._abort_if_unique_id_configured()
-
+                # Unique per instance, not per name, so duplicates are allowed.
+                await self.async_set_unique_id(uuid.uuid4().hex)
                 return self.async_create_entry(
                     title=name,
                     data={
                         CONF_TIMER_NAME: name,
-                        CONF_INITIAL_SECONDS: user_input.get(
-                            CONF_INITIAL_SECONDS, DEFAULT_INITIAL_SECONDS
+                        CONF_INITIAL_SECONDS: int(
+                            user_input.get(CONF_INITIAL_SECONDS, DEFAULT_INITIAL_SECONDS)
                         ),
                     },
                 )
@@ -85,7 +90,7 @@ class SmartTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_TIMER_NAME, default=""): _name_selector(),
+                    vol.Required(CONF_TIMER_NAME): selector.TextSelector(),
                     vol.Optional(
                         CONF_INITIAL_SECONDS,
                         default=DEFAULT_INITIAL_SECONDS,
@@ -98,68 +103,45 @@ class SmartTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class SmartTimerOptionsFlow(config_entries.OptionsFlow):
-    """Handle an options flow for an existing Smart Timer."""
+    """Configure the sound played when a timer hits zero."""
 
-    def __init__(self, entry: ConfigEntry) -> None:
-        self.entry = entry
-
-    async def async_step_init(
-        self, user_input: dict | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
         if user_input is not None:
-            media_player = user_input.get(CONF_MEDIA_PLAYER)
-            sound_url = user_input.get(CONF_SOUND_URL, "").strip()
-            sound_path = user_input.get(CONF_SOUND_PATH, "").strip()
+            sound_url = str(user_input.get(CONF_SOUND_URL) or "").strip()
+            sound_path = str(user_input.get(CONF_SOUND_PATH) or "").strip()
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_MEDIA_PLAYER: user_input.get(CONF_MEDIA_PLAYER) or None,
+                    CONF_SOUND_URL: sound_url or None,
+                    CONF_SOUND_PATH: sound_path or None,
+                    CONF_SOUND_VOLUME: user_input.get(
+                        CONF_SOUND_VOLUME, DEFAULT_SOUND_VOLUME
+                    ),
+                },
+            )
 
-            options = {
-                CONF_MEDIA_PLAYER: media_player,
-                CONF_SOUND_URL: sound_url or None,
-                CONF_SOUND_PATH: sound_path or None,
-                CONF_SOUND_VOLUME: user_input.get(
-                    CONF_SOUND_VOLUME, DEFAULT_SOUND_VOLUME
-                ),
-            }
-            return self.async_create_entry(title="", data=options)
-
-        current = self.entry.options
+        current = self.config_entry.options
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Optional(
                         CONF_MEDIA_PLAYER,
-                        default=current.get(CONF_MEDIA_PLAYER),
+                        description={"suggested_value": current.get(CONF_MEDIA_PLAYER)},
                     ): _media_player_selector(),
                     vol.Optional(
                         CONF_SOUND_URL,
-                        default=current.get(CONF_SOUND_URL, ""),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.URL,
-                            placeholder="https://example.com/sound.mp3",
-                        )
-                    ),
+                        description={"suggested_value": current.get(CONF_SOUND_URL) or ""},
+                    ): selector.TextSelector(),
                     vol.Optional(
                         CONF_SOUND_PATH,
-                        default=current.get(CONF_SOUND_PATH, ""),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            placeholder="/config/www/sound.mp3",
-                        )
-                    ),
+                        description={"suggested_value": current.get(CONF_SOUND_PATH) or ""},
+                    ): selector.TextSelector(),
                     vol.Optional(
                         CONF_SOUND_VOLUME,
                         default=current.get(CONF_SOUND_VOLUME, DEFAULT_SOUND_VOLUME),
                     ): _volume_selector(),
                 }
             ),
-            description_placeholders={"domain": DOMAIN},
         )
-
-
-async def async_get_options_flow(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-) -> SmartTimerOptionsFlow:
-    """Return the options flow handler."""
-    return SmartTimerOptionsFlow(entry)
