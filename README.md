@@ -78,6 +78,8 @@ https://github.com/MrWaggel/hatimer
 
 Install the **Smart Timer** integration, then restart Home Assistant.
 
+Marketplace versions are GitHub releases (`v1.5.1`), not commit hashes. Update to the latest release if the installed version looks like `5bc5c4b`. The icon is `custom_components/smart_timer/brand/icon.png` and shows up once that release is installed.
+
 The integration registers the dashboard card itself (it is served from the
 integration folder). You do not add a separate dashboard resource. After the
 restart, hard-refresh the browser once so the card module loads.
