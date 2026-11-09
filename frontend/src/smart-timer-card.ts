@@ -27,7 +27,14 @@ interface SmartTimerCardConfig extends LovelaceCardConfig {
   entity?: string;
   name?: string;
   show_buttons?: boolean;
+  show_pause_reset?: boolean;
 }
+
+const FINISH_ALERT_MS = 15000;
+const DEFAULT_ALARM_URLS = [
+  "/local/smart_timer/kitchen-timer.mp3",
+  "/smart_timer/kitchen-timer.mp3",
+];
 
 const TRIPLE_TAP_WINDOW_MS = 800;
 const TAP_SETTLE_MS = 350;
@@ -57,7 +64,7 @@ export class SmartTimerCardEditor extends LitElement {
   @state() private _config: SmartTimerCardConfig = { entity: "" };
 
   public setConfig(config: SmartTimerCardConfig): void {
-    this._config = { show_buttons: true, ...config };
+    this._config = { show_buttons: true, show_pause_reset: true, ...config };
   }
 
   private _valueChanged(ev: CustomEvent): void {
@@ -77,7 +84,8 @@ export class SmartTimerCardEditor extends LitElement {
       {
         entity: "Smart Timer",
         name: "Name",
-        show_buttons: "Show buttons",
+        show_buttons: "Show + time buttons",
+        show_pause_reset: "Show PAUSE / RESET button",
       }[schema.name] || schema.name
     );
   }
@@ -92,6 +100,7 @@ export class SmartTimerCardEditor extends LitElement {
       },
       { name: "name", selector: { text: {} } },
       { name: "show_buttons", selector: { boolean: {} } },
+      { name: "show_pause_reset", selector: { boolean: {} } },
     ];
     return html`
       <ha-form
@@ -112,9 +121,15 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
 
   @state() private _display = "00:00:00";
   @state() private _timerState = "idle";
+  @state() private _alerting = false;
 
   private _taps: number[] = [];
   private _tapTimer: number | undefined;
+  private _alertTimer: number | undefined;
+  private _alertDone = false;
+  private _onScreen = false;
+  private _observer?: IntersectionObserver;
+  private _pendingAlarm = false;
   /** True once this card has observed a non-zero countdown. */
   private _seenRunning = false;
   private _firedThisZero = false;
@@ -124,14 +139,19 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
   }
 
   public static getStubConfig(): Record<string, unknown> {
-    return { entity: "", show_buttons: true };
+    return { entity: "", show_buttons: true, show_pause_reset: true };
   }
 
   public setConfig(config: SmartTimerCardConfig): void {
     if (!config || typeof config !== "object") {
       throw new Error("Invalid card configuration");
     }
-    this.config = { show_buttons: true, name: "", ...config };
+    this.config = {
+      show_buttons: true,
+      show_pause_reset: true,
+      name: "",
+      ...config,
+    };
   }
 
   public getCardSize(): number {
@@ -170,7 +190,8 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
 
     this._display = display;
     this._timerState = state;
-    this._maybeFire(display, state, remaining);
+    this._maybeFire(state, remaining);
+    this._syncAlert(state);
   }
 
   /**
@@ -179,10 +200,9 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
    * dedupes, so automations run once. Opening a dashboard on an already
    * finished timer does not re-fire.
    */
-  private _maybeFire(_display: string, state: string, remaining: number): void {
+  private _maybeFire(state: string, remaining: number): void {
     // Idle at 00:00:00 is a valid default (kitchen timer), not a completion.
-    const atZero = state === "finished";
-    if (!atZero) {
+    if (state !== "finished") {
       if (state === "running" || (Number.isFinite(remaining) && remaining > 0)) {
         this._seenRunning = true;
       }
@@ -192,6 +212,106 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
     if (!this._seenRunning || this._firedThisZero || !this._entityId) return;
     this._firedThisZero = true;
     void this._callService("fire");
+    this._playAlarm();
+  }
+
+  private _syncAlert(state: string): void {
+    if (state !== "finished" || !this._seenRunning) {
+      this._alerting = false;
+      this._alertDone = false;
+      window.clearTimeout(this._alertTimer);
+      this._alertTimer = undefined;
+      return;
+    }
+    if (this._alertDone || this._alertTimer != null) return;
+    this._alerting = true;
+    this._alertTimer = window.setTimeout(() => {
+      this._alerting = false;
+      this._alertDone = true;
+      this._alertTimer = undefined;
+    }, FINISH_ALERT_MS);
+  }
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this._observer = new IntersectionObserver((entries) => {
+      this._onScreen = entries.some((entry) => entry.isIntersecting);
+    });
+    this._observer.observe(this);
+  }
+
+  private _cardIsVisible(): boolean {
+    if (document.visibilityState === "hidden") return false;
+    if (this._onScreen) return true;
+    const rect = this.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+  }
+
+  private _alarmUrls(): string[] {
+    const url = this._entity?.attributes?.alarm_url;
+    if (url === null || url === false || url === "") return [];
+    if (typeof url === "string" && url && !DEFAULT_ALARM_URLS.includes(url)) {
+      return [url, ...DEFAULT_ALARM_URLS];
+    }
+    if (this._entity?.attributes?.sound === "none") return [];
+    return DEFAULT_ALARM_URLS;
+  }
+
+  private _alarmElement(): HTMLAudioElement | null {
+    return this.renderRoot?.querySelector("audio") ?? null;
+  }
+
+  /** Browsers block audio until a tap. Call this from a pointer handler. */
+  private _unlockAudio(): void {
+    const audio = this._alarmElement();
+    if (!audio) return;
+    const url = this._alarmUrls()[0];
+    if (url && audio.getAttribute("src") !== url) audio.src = url;
+    if (!audio.src) return;
+    const volume = audio.volume;
+    audio.volume = 0;
+    void audio
+      .play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = volume || 1;
+        if (this._pendingAlarm) {
+          this._pendingAlarm = false;
+          void this._playAlarm();
+        }
+      })
+      .catch(() => {
+        audio.volume = volume || 1;
+      });
+  }
+
+  private _playAlarm(): void {
+    if (!this._cardIsVisible()) return;
+    const urls = this._alarmUrls();
+    const audio = this._alarmElement();
+    if (!urls.length || !audio) return;
+    void this._playFirst(audio, urls);
+  }
+
+  private async _playFirst(audio: HTMLAudioElement, urls: string[]): Promise<void> {
+    for (const url of urls) {
+      audio.src = url;
+      audio.volume = 1;
+      try {
+        audio.currentTime = 0;
+      } catch {
+        // Some browsers throw if metadata is not loaded yet.
+      }
+      try {
+        await audio.play();
+        this._pendingAlarm = false;
+        return;
+      } catch {
+        // Autoplay block or a missing file. Try the next URL.
+      }
+    }
+    this._pendingAlarm = true;
   }
 
   private async _callService(
@@ -217,6 +337,7 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
   private _onPauseButton(ev: Event): void {
     ev.preventDefault();
     ev.stopPropagation();
+    this._unlockAudio();
     const now = Date.now();
     this._taps = [...this._taps, now].filter((t) => now - t <= TRIPLE_TAP_WINDOW_MS);
     window.clearTimeout(this._tapTimer);
@@ -235,21 +356,34 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
     }, TAP_SETTLE_MS);
   }
 
-  disconnectedCallback(): void {
+  override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.clearTimeout(this._tapTimer);
+    window.clearTimeout(this._alertTimer);
+    this._observer?.disconnect();
+    this._alarmElement()?.pause();
   }
 
   private _renderButtons() {
-    if (this.config?.show_buttons === false) return html``;
+    const showInc = this.config?.show_buttons !== false;
+    const showPause = this.config?.show_pause_reset !== false;
+    if (!showInc && !showPause) return html``;
     return html`
-      <div class="buttons">
-        <button class="inc" @click=${() => this._onIncrement(10)}>+10 SEC</button>
-        <button class="inc" @click=${() => this._onIncrement(60)}>+1 MIN</button>
-        <button class="inc" @click=${() => this._onIncrement(300)}>+5 MIN</button>
-        <button class="pause" @click=${(e: Event) => this._onPauseButton(e)}>
-          PAUSE / RESET
-        </button>
+      <div class="buttons ${showInc ? "" : "pause-only"}">
+        ${showInc
+          ? html`
+              <button class="inc" @click=${() => this._onIncrement(10)}>+10 SEC</button>
+              <button class="inc" @click=${() => this._onIncrement(60)}>+1 MIN</button>
+              <button class="inc" @click=${() => this._onIncrement(300)}>+5 MIN</button>
+            `
+          : ""}
+        ${showPause
+          ? html`
+              <button class="pause" @click=${(e: Event) => this._onPauseButton(e)}>
+                PAUSE / RESET
+              </button>
+            `
+          : ""}
       </div>
     `;
   }
@@ -274,13 +408,20 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
         <div class="card-content">
           <div class="header">
             <span class="title">${title}</span>
-            <span class="status ${this._timerState}">${this._timerState}</span>
+            <span class="status ${this._timerState} ${this._alerting ? "alert" : ""}">${this._timerState}</span>
           </div>
           <div
-            class="clock ${this._timerState === "running" ? "running" : ""} ${this._timerState === "finished" ? "finished" : ""}"
+            class="clock ${this._timerState === "running" && !this._alerting ? "running" : ""} ${this._alerting ? "alert" : ""}"
+            role="button"
+            tabindex="0"
+            @click=${(e: Event) => this._onPauseButton(e)}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") this._onPauseButton(e);
+            }}
           >
             ${this._display}
           </div>
+          <audio playsinline preload="auto" src="/local/smart_timer/kitchen-timer.mp3"></audio>
           ${this._renderButtons()}
         </div>
       </ha-card>
@@ -319,12 +460,22 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
       font-variant-numeric: tabular-nums;
       color: var(--primary-text-color);
       padding: 2px 0 4px;
+      cursor: pointer;
     }
     .clock.running {
       color: var(--primary-color);
     }
-    .clock.finished {
+    .clock.alert {
       color: var(--error-color);
+      animation: smart-timer-flash 1s ease-in-out infinite;
+    }
+    @keyframes smart-timer-flash {
+      50% {
+        opacity: 0.35;
+      }
+    }
+    audio {
+      display: none;
     }
     .status {
       text-transform: uppercase;
@@ -335,7 +486,7 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
     .status.running {
       color: var(--primary-color);
     }
-    .status.finished {
+    .status.alert {
       color: var(--error-color);
     }
     .hint {
@@ -365,6 +516,10 @@ export class SmartTimerCard extends LitElement implements LovelaceCard {
     }
     button.inc {
       color: var(--primary-color);
+    }
+    button.pause,
+    .buttons.pause-only {
+      grid-column: 1 / -1;
     }
     button.pause {
       grid-column: 1 / -1;

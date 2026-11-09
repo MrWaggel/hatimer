@@ -17,6 +17,7 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     ATTR_MINUTES,
     ATTR_SECONDS,
+    ALARM_STATIC_URL,
     CARD_URL,
     DEFAULT_SOUND_FILE,
     DOMAIN,
@@ -105,14 +106,22 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     """
     if hass.data[DOMAIN].get("card_registered"):
         return
+    paths: list[StaticPathConfig] = []
     card_path = Path(__file__).parent / "www" / "smart-timer-card.js"
-    if not card_path.is_file():
+    sound_path = Path(__file__).parent / "sounds" / DEFAULT_SOUND_FILE
+    if card_path.is_file():
+        paths.append(StaticPathConfig(CARD_URL, str(card_path), cache_headers=False))
+    else:
         _LOGGER.warning("Smart Timer card bundle missing at %s", card_path)
-        return
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(CARD_URL, str(card_path), cache_headers=False)]
-    )
-    add_extra_js_url(hass, CARD_URL)
+    if sound_path.is_file():
+        # Browser and companion app play this directly. No media player required.
+        paths.append(StaticPathConfig(ALARM_STATIC_URL, str(sound_path), cache_headers=True))
+    else:
+        _LOGGER.warning("Bundled kitchen timer sound missing at %s", sound_path)
+    if paths:
+        await hass.http.async_register_static_paths(paths)
+    if card_path.is_file():
+        add_extra_js_url(hass, CARD_URL)
     hass.data[DOMAIN]["card_registered"] = True
     _LOGGER.debug("Registered Smart Timer card at %s", CARD_URL)
 

@@ -72,6 +72,11 @@ const t=t=>(e,o)=>{ void 0!==o?o.addInitializer(()=>{customElements.define(t,e);
  * SPDX-License-Identifier: BSD-3-Clause
  */function r(r){return n({...r,state:true,attribute:false})}
 
+const FINISH_ALERT_MS = 15000;
+const DEFAULT_ALARM_URLS = [
+    "/local/smart_timer/kitchen-timer.mp3",
+    "/smart_timer/kitchen-timer.mp3",
+];
 const TRIPLE_TAP_WINDOW_MS = 800;
 const TAP_SETTLE_MS = 350;
 /** Format seconds as a strict HH:MM:SS string. */
@@ -99,7 +104,7 @@ let SmartTimerCardEditor = class SmartTimerCardEditor extends i {
         this._config = { entity: "" };
     }
     setConfig(config) {
-        this._config = { show_buttons: true, ...config };
+        this._config = { show_buttons: true, show_pause_reset: true, ...config };
     }
     _valueChanged(ev) {
         const config = ev.detail.value;
@@ -114,7 +119,8 @@ let SmartTimerCardEditor = class SmartTimerCardEditor extends i {
         return ({
             entity: "Smart Timer",
             name: "Name",
-            show_buttons: "Show buttons",
+            show_buttons: "Show + time buttons",
+            show_pause_reset: "Show PAUSE / RESET button",
         }[schema.name] || schema.name);
     }
     render() {
@@ -128,6 +134,7 @@ let SmartTimerCardEditor = class SmartTimerCardEditor extends i {
             },
             { name: "name", selector: { text: {} } },
             { name: "show_buttons", selector: { boolean: {} } },
+            { name: "show_pause_reset", selector: { boolean: {} } },
         ];
         return b `
       <ha-form
@@ -154,7 +161,11 @@ let SmartTimerCard = class SmartTimerCard extends i {
         super(...arguments);
         this._display = "00:00:00";
         this._timerState = "idle";
+        this._alerting = false;
         this._taps = [];
+        this._alertDone = false;
+        this._onScreen = false;
+        this._pendingAlarm = false;
         /** True once this card has observed a non-zero countdown. */
         this._seenRunning = false;
         this._firedThisZero = false;
@@ -163,13 +174,18 @@ let SmartTimerCard = class SmartTimerCard extends i {
         return document.createElement("smart-timer-card-editor");
     }
     static getStubConfig() {
-        return { entity: "", show_buttons: true };
+        return { entity: "", show_buttons: true, show_pause_reset: true };
     }
     setConfig(config) {
         if (!config || typeof config !== "object") {
             throw new Error("Invalid card configuration");
         }
-        this.config = { show_buttons: true, name: "", ...config };
+        this.config = {
+            show_buttons: true,
+            show_pause_reset: true,
+            name: "",
+            ...config,
+        };
     }
     getCardSize() {
         return 3;
@@ -201,7 +217,8 @@ let SmartTimerCard = class SmartTimerCard extends i {
             : formatSecondsHMS(Number.isFinite(remaining) ? remaining : 0);
         this._display = display;
         this._timerState = state;
-        this._maybeFire(display, state, remaining);
+        this._maybeFire(state, remaining);
+        this._syncAlert(state);
     }
     /**
      * When a countdown this card has been watching reaches 00:00:00, call the
@@ -209,10 +226,9 @@ let SmartTimerCard = class SmartTimerCard extends i {
      * dedupes, so automations run once. Opening a dashboard on an already
      * finished timer does not re-fire.
      */
-    _maybeFire(_display, state, remaining) {
+    _maybeFire(state, remaining) {
         // Idle at 00:00:00 is a valid default (kitchen timer), not a completion.
-        const atZero = state === "finished";
-        if (!atZero) {
+        if (state !== "finished") {
             if (state === "running" || (Number.isFinite(remaining) && remaining > 0)) {
                 this._seenRunning = true;
             }
@@ -223,6 +239,110 @@ let SmartTimerCard = class SmartTimerCard extends i {
             return;
         this._firedThisZero = true;
         void this._callService("fire");
+        this._playAlarm();
+    }
+    _syncAlert(state) {
+        if (state !== "finished" || !this._seenRunning) {
+            this._alerting = false;
+            this._alertDone = false;
+            window.clearTimeout(this._alertTimer);
+            this._alertTimer = undefined;
+            return;
+        }
+        if (this._alertDone || this._alertTimer != null)
+            return;
+        this._alerting = true;
+        this._alertTimer = window.setTimeout(() => {
+            this._alerting = false;
+            this._alertDone = true;
+            this._alertTimer = undefined;
+        }, FINISH_ALERT_MS);
+    }
+    connectedCallback() {
+        super.connectedCallback();
+        this._observer = new IntersectionObserver((entries) => {
+            this._onScreen = entries.some((entry) => entry.isIntersecting);
+        });
+        this._observer.observe(this);
+    }
+    _cardIsVisible() {
+        if (document.visibilityState === "hidden")
+            return false;
+        if (this._onScreen)
+            return true;
+        const rect = this.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+    }
+    _alarmUrls() {
+        const url = this._entity?.attributes?.alarm_url;
+        if (url === null || url === false || url === "")
+            return [];
+        if (typeof url === "string" && url && !DEFAULT_ALARM_URLS.includes(url)) {
+            return [url, ...DEFAULT_ALARM_URLS];
+        }
+        if (this._entity?.attributes?.sound === "none")
+            return [];
+        return DEFAULT_ALARM_URLS;
+    }
+    _alarmElement() {
+        return this.renderRoot?.querySelector("audio") ?? null;
+    }
+    /** Browsers block audio until a tap. Call this from a pointer handler. */
+    _unlockAudio() {
+        const audio = this._alarmElement();
+        if (!audio)
+            return;
+        const url = this._alarmUrls()[0];
+        if (url && audio.getAttribute("src") !== url)
+            audio.src = url;
+        if (!audio.src)
+            return;
+        const volume = audio.volume;
+        audio.volume = 0;
+        void audio
+            .play()
+            .then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.volume = volume || 1;
+            if (this._pendingAlarm) {
+                this._pendingAlarm = false;
+                void this._playAlarm();
+            }
+        })
+            .catch(() => {
+            audio.volume = volume || 1;
+        });
+    }
+    _playAlarm() {
+        if (!this._cardIsVisible())
+            return;
+        const urls = this._alarmUrls();
+        const audio = this._alarmElement();
+        if (!urls.length || !audio)
+            return;
+        void this._playFirst(audio, urls);
+    }
+    async _playFirst(audio, urls) {
+        for (const url of urls) {
+            audio.src = url;
+            audio.volume = 1;
+            try {
+                audio.currentTime = 0;
+            }
+            catch {
+                // Some browsers throw if metadata is not loaded yet.
+            }
+            try {
+                await audio.play();
+                this._pendingAlarm = false;
+                return;
+            }
+            catch {
+                // Autoplay block or a missing file. Try the next URL.
+            }
+        }
+        this._pendingAlarm = true;
     }
     async _callService(service, data = {}) {
         if (!this.hass || !this._entityId)
@@ -243,6 +363,7 @@ let SmartTimerCard = class SmartTimerCard extends i {
     _onPauseButton(ev) {
         ev.preventDefault();
         ev.stopPropagation();
+        this._unlockAudio();
         const now = Date.now();
         this._taps = [...this._taps, now].filter((t) => now - t <= TRIPLE_TAP_WINDOW_MS);
         window.clearTimeout(this._tapTimer);
@@ -262,18 +383,31 @@ let SmartTimerCard = class SmartTimerCard extends i {
     disconnectedCallback() {
         super.disconnectedCallback();
         window.clearTimeout(this._tapTimer);
+        window.clearTimeout(this._alertTimer);
+        this._observer?.disconnect();
+        this._alarmElement()?.pause();
     }
     _renderButtons() {
-        if (this.config?.show_buttons === false)
+        const showInc = this.config?.show_buttons !== false;
+        const showPause = this.config?.show_pause_reset !== false;
+        if (!showInc && !showPause)
             return b ``;
         return b `
-      <div class="buttons">
-        <button class="inc" @click=${() => this._onIncrement(10)}>+10 SEC</button>
-        <button class="inc" @click=${() => this._onIncrement(60)}>+1 MIN</button>
-        <button class="inc" @click=${() => this._onIncrement(300)}>+5 MIN</button>
-        <button class="pause" @click=${(e) => this._onPauseButton(e)}>
-          PAUSE / RESET
-        </button>
+      <div class="buttons ${showInc ? "" : "pause-only"}">
+        ${showInc
+            ? b `
+              <button class="inc" @click=${() => this._onIncrement(10)}>+10 SEC</button>
+              <button class="inc" @click=${() => this._onIncrement(60)}>+1 MIN</button>
+              <button class="inc" @click=${() => this._onIncrement(300)}>+5 MIN</button>
+            `
+            : ""}
+        ${showPause
+            ? b `
+              <button class="pause" @click=${(e) => this._onPauseButton(e)}>
+                PAUSE / RESET
+              </button>
+            `
+            : ""}
       </div>
     `;
     }
@@ -296,13 +430,21 @@ let SmartTimerCard = class SmartTimerCard extends i {
         <div class="card-content">
           <div class="header">
             <span class="title">${title}</span>
-            <span class="status ${this._timerState}">${this._timerState}</span>
+            <span class="status ${this._timerState} ${this._alerting ? "alert" : ""}">${this._timerState}</span>
           </div>
           <div
-            class="clock ${this._timerState === "running" ? "running" : ""} ${this._timerState === "finished" ? "finished" : ""}"
+            class="clock ${this._timerState === "running" && !this._alerting ? "running" : ""} ${this._alerting ? "alert" : ""}"
+            role="button"
+            tabindex="0"
+            @click=${(e) => this._onPauseButton(e)}
+            @keydown=${(e) => {
+            if (e.key === "Enter" || e.key === " ")
+                this._onPauseButton(e);
+        }}
           >
             ${this._display}
           </div>
+          <audio playsinline preload="auto" src="/local/smart_timer/kitchen-timer.mp3"></audio>
           ${this._renderButtons()}
         </div>
       </ha-card>
@@ -341,12 +483,22 @@ SmartTimerCard.styles = i$3 `
       font-variant-numeric: tabular-nums;
       color: var(--primary-text-color);
       padding: 2px 0 4px;
+      cursor: pointer;
     }
     .clock.running {
       color: var(--primary-color);
     }
-    .clock.finished {
+    .clock.alert {
       color: var(--error-color);
+      animation: smart-timer-flash 1s ease-in-out infinite;
+    }
+    @keyframes smart-timer-flash {
+      50% {
+        opacity: 0.35;
+      }
+    }
+    audio {
+      display: none;
     }
     .status {
       text-transform: uppercase;
@@ -357,7 +509,7 @@ SmartTimerCard.styles = i$3 `
     .status.running {
       color: var(--primary-color);
     }
-    .status.finished {
+    .status.alert {
       color: var(--error-color);
     }
     .hint {
@@ -388,6 +540,10 @@ SmartTimerCard.styles = i$3 `
     button.inc {
       color: var(--primary-color);
     }
+    button.pause,
+    .buttons.pause-only {
+      grid-column: 1 / -1;
+    }
     button.pause {
       grid-column: 1 / -1;
       color: var(--primary-text-color);
@@ -405,6 +561,9 @@ __decorate([
 __decorate([
     r()
 ], SmartTimerCard.prototype, "_timerState", void 0);
+__decorate([
+    r()
+], SmartTimerCard.prototype, "_alerting", void 0);
 SmartTimerCard = __decorate([
     t("smart-timer-card")
 ], SmartTimerCard);

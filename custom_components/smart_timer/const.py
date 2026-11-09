@@ -5,11 +5,15 @@ from __future__ import annotations
 from homeassistant.const import Platform
 
 DOMAIN = "smart_timer"
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 # Frontend bundle served by the integration (Marketplace installs one type).
 CARD_URL = "/smart_timer/smart-timer-card.js"
+# Public path copied into /config/www. The card and media players both use it.
+ALARM_URL = "/local/smart_timer/kitchen-timer.mp3"
+# Served directly from the integration, in case /config/www is not available yet.
+ALARM_STATIC_URL = "/smart_timer/kitchen-timer.mp3"
 
 # ---------------------------------------------------------------------------
 # Config flow / options keys
@@ -30,7 +34,7 @@ DEFAULT_SOUND_VOLUME = 100
 SOUND_DEFAULT = "default"
 SOUND_CUSTOM = "custom"
 SOUND_NONE = "none"
-DEFAULT_SOUND_FILE = "kitchen-timer.wav"
+DEFAULT_SOUND_FILE = "kitchen-timer.mp3"
 
 # Maximum seconds a single timer can hold (guards against runaway values).
 MAX_SECONDS = 24 * 60 * 60  # 24 hours
@@ -62,6 +66,7 @@ ATTR_TOTAL_SECONDS = "total_seconds"
 ATTR_DEFAULT_SECONDS = "default_seconds"
 ATTR_FORMATTED = "formatted"
 ATTR_SOUND = "sound"
+ATTR_ALARM_URL = "alarm_url"
 ATTR_DEVICE_ID = "device_id"
 ATTR_ENTITY_ID = "entity_id"
 

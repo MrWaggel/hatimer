@@ -13,6 +13,8 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
+    ALARM_URL,
+    ATTR_ALARM_URL,
     ATTR_DEVICE_ID,
     ATTR_ENTITY_ID,
     ATTR_FORMATTED,
@@ -122,6 +124,7 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
             ATTR_DEFAULT_SECONDS: int(round(self._engine.default)),
             ATTR_FORMATTED: format_seconds(self._engine.remaining),
             ATTR_SOUND: self.sound_summary,
+            ATTR_ALARM_URL: self.alarm_url,
             ATTR_DEVICE_ID: self.device_id,
             ATTR_ENTITY_ID: self.entity_id,
         }
@@ -147,8 +150,24 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
         if source == SOUND_CUSTOM:
             return custom
         if source == SOUND_DEFAULT or not custom:
-            return "kitchen-timer.wav"
+            return "kitchen-timer.mp3"
         return custom
+
+    @property
+    def alarm_url(self) -> str | None:
+        """URL the dashboard card can play in the browser. None means no sound."""
+        opts = self._options()
+        source = opts.get(CONF_SOUND_SOURCE)
+        custom = opts.get(CONF_SOUND_URL) or opts.get(CONF_SOUND_PATH)
+        if source == SOUND_NONE:
+            return None
+        if source == SOUND_CUSTOM:
+            if isinstance(custom, str) and (
+                custom.startswith(("http://", "https://", "/"))
+            ):
+                return custom
+            return None
+        return ALARM_URL
 
     def _configured_default(self) -> float:
         opts = self._options()

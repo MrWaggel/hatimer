@@ -91,7 +91,7 @@ Open the entry's **Configure** menu to change the default, or the sound:
 - **Custom URL or file**
 - **No sound**
 
-A media player is only needed if you want sound. The bundled file is copied to `/config/www/smart_timer/kitchen-timer.wav` and played from there.
+A media player is optional. If the card is on screen when the timer hits zero, the browser (and the Android app) plays the alarm itself. A media player, if set, also plays it. The bundled file is `kitchen-timer.mp3`, copied to `/config/www/smart_timer/kitchen-timer.mp3`.
 
 ### 3. Add the dashboard card
 
@@ -101,7 +101,8 @@ Edit a dashboard → **Add card** → **Smart Timer** → pick the timer entity.
 type: custom:smart-timer-card
 entity: sensor.pizza
 name: Pizza Timer   # optional
-show_buttons: true  # optional (default true)
+show_buttons: true       # +10 SEC / +1 MIN / +5 MIN (default true)
+show_pause_reset: true  # PAUSE / RESET button (default true)
 ```
 
 ---
@@ -226,7 +227,7 @@ kitchen timer.wav by KeyKrusher — https://freesound.org/s/154954/ — License:
 
 https://creativecommons.org/licenses/by/4.0/
 
-The bundled file is the original recording, unmodified. See `custom_components/smart_timer/sounds/ATTRIBUTION.md`.
+The bundled file is the original recording encoded as MP3. See `custom_components/smart_timer/sounds/ATTRIBUTION.md`.
 
 ## License
 
