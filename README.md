@@ -20,7 +20,9 @@ choose and fires the `smart_timer_on_fire` event you can hook into.
   kitchen timer, a media player plus your own URL/path, or no sound.
 - **Services** — `smart_timer.add_time`, `set_time`, `start`, `pause`,
   `resume`, `toggle`, `reset`, `set_sound` and `fire`.
-- **Event bus** — fires `smart_timer_on_fire` when a timer hits zero, with the
+- **Event entity** — each device has a **Finished** event entity. Add an
+  automation from the device, or trigger on `event.<name>_finished`.
+- **Event bus** — also fires `smart_timer_on_fire` when a timer hits zero, with the
   device id, entity id, name and total seconds in the event data.
 - **Reliable ticker** — countdown runs off a real `end_time` timestamp on the
   event loop, updating state every second.
@@ -103,6 +105,10 @@ entity: sensor.pizza
 name: Pizza Timer   # optional
 show_buttons: true       # +10 SEC / +1 MIN / +5 MIN (default true)
 show_pause_reset: true  # PAUSE / RESET button (default true)
+title_size: 1           # rem
+clock_size: 1.6         # rem, the HH:MM:SS text
+button_size: 0.8        # rem
+button_padding: 8       # px
 ```
 
 ---

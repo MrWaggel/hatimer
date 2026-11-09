@@ -1,6 +1,6 @@
 {
   "name": "smart-timer-card",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Interactive Smart Timer Lovelace card for Home Assistant.",
   "type": "module",
   "license": "MIT",

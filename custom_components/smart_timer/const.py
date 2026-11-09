@@ -5,8 +5,8 @@ from __future__ import annotations
 from homeassistant.const import Platform
 
 DOMAIN = "smart_timer"
-VERSION = "1.3.0"
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+VERSION = "1.4.0"
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.EVENT]
 
 # Frontend bundle served by the integration (Marketplace installs one type).
 CARD_URL = "/smart_timer/smart-timer-card.js"
@@ -46,8 +46,10 @@ EVENT_ON_FIRE = f"{DOMAIN}_on_fire"
 
 EVENT_ATTR_DEVICE_ID = "device_id"
 EVENT_ATTR_ENTITY_ID = "entity_id"
+EVENT_ATTR_ENTRY_ID = "entry_id"
 EVENT_ATTR_TIMER_NAME = "name"
 EVENT_ATTR_TOTAL_SECONDS = "total_seconds"
+EVENT_TYPE_FINISHED = "finished"
 
 # ---------------------------------------------------------------------------
 # Sensor state machine.

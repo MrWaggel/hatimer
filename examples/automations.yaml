@@ -11,6 +11,18 @@
 # HA automations (YAML or the visual editor).
 # ============================================================================
 
+# Device event entity. Open the timer device and add an automation, or use
+# the Finished event entity directly (entity id follows the timer name).
+- alias: Kitchen timer device event
+  triggers:
+    - trigger: state
+      entity_id: event.kitchen_finished
+  actions:
+    - service: notify.persistent_notification
+      data:
+        title: "Timer done"
+        message: "Kitchen timer reached zero"
+
 # Play a notification that names the timer
 - alias: Smart Timer finished
   triggers:

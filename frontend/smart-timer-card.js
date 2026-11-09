@@ -104,7 +104,15 @@ let SmartTimerCardEditor = class SmartTimerCardEditor extends i {
         this._config = { entity: "" };
     }
     setConfig(config) {
-        this._config = { show_buttons: true, show_pause_reset: true, ...config };
+        this._config = {
+            show_buttons: true,
+            show_pause_reset: true,
+            title_size: 1,
+            clock_size: 1.6,
+            button_size: 0.8,
+            button_padding: 8,
+            ...config,
+        };
     }
     _valueChanged(ev) {
         const config = ev.detail.value;
@@ -121,6 +129,10 @@ let SmartTimerCardEditor = class SmartTimerCardEditor extends i {
             name: "Name",
             show_buttons: "Show + time buttons",
             show_pause_reset: "Show PAUSE / RESET button",
+            title_size: "Title size",
+            clock_size: "Timer text size",
+            button_size: "Button text size",
+            button_padding: "Button size",
         }[schema.name] || schema.name);
     }
     render() {
@@ -135,6 +147,22 @@ let SmartTimerCardEditor = class SmartTimerCardEditor extends i {
             { name: "name", selector: { text: {} } },
             { name: "show_buttons", selector: { boolean: {} } },
             { name: "show_pause_reset", selector: { boolean: {} } },
+            {
+                name: "title_size",
+                selector: { number: { min: 0.7, max: 2.5, step: 0.1, mode: "box", unit_of_measurement: "rem" } },
+            },
+            {
+                name: "clock_size",
+                selector: { number: { min: 1, max: 5, step: 0.1, mode: "box", unit_of_measurement: "rem" } },
+            },
+            {
+                name: "button_size",
+                selector: { number: { min: 0.6, max: 1.6, step: 0.05, mode: "box", unit_of_measurement: "rem" } },
+            },
+            {
+                name: "button_padding",
+                selector: { number: { min: 2, max: 24, step: 1, mode: "box", unit_of_measurement: "px" } },
+            },
         ];
         return b `
       <ha-form
@@ -174,7 +202,15 @@ let SmartTimerCard = class SmartTimerCard extends i {
         return document.createElement("smart-timer-card-editor");
     }
     static getStubConfig() {
-        return { entity: "", show_buttons: true, show_pause_reset: true };
+        return {
+            entity: "",
+            show_buttons: true,
+            show_pause_reset: true,
+            title_size: 1,
+            clock_size: 1.6,
+            button_size: 0.8,
+            button_padding: 8,
+        };
     }
     setConfig(config) {
         if (!config || typeof config !== "object") {
@@ -183,6 +219,10 @@ let SmartTimerCard = class SmartTimerCard extends i {
         this.config = {
             show_buttons: true,
             show_pause_reset: true,
+            title_size: 1,
+            clock_size: 1.6,
+            button_size: 0.8,
+            button_padding: 8,
             name: "",
             ...config,
         };
@@ -360,6 +400,32 @@ let SmartTimerCard = class SmartTimerCard extends i {
      * resets. The single-tap action waits out the settle window so a triple
      * tap does not also pause and resume.
      */
+    _stopAlarm() {
+        const audio = this._alarmElement();
+        if (!audio)
+            return;
+        audio.pause();
+        try {
+            audio.currentTime = 0;
+        }
+        catch {
+            // Ignore if the file has not loaded yet.
+        }
+        this._pendingAlarm = false;
+    }
+    /** First tap on the clock after zero: silence the alarm and return to idle. */
+    _onTimerTap(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (this._timerState === "finished") {
+            this._stopAlarm();
+            this._taps = [];
+            window.clearTimeout(this._tapTimer);
+            void this._callService("reset");
+            return;
+        }
+        this._onPauseButton(ev);
+    }
     _onPauseButton(ev) {
         ev.preventDefault();
         ev.stopPropagation();
@@ -386,6 +452,18 @@ let SmartTimerCard = class SmartTimerCard extends i {
         window.clearTimeout(this._alertTimer);
         this._observer?.disconnect();
         this._alarmElement()?.pause();
+    }
+    _sizeStyle() {
+        const title = Number(this.config?.title_size ?? 1);
+        const clock = Number(this.config?.clock_size ?? 1.6);
+        const button = Number(this.config?.button_size ?? 0.8);
+        const pad = Number(this.config?.button_padding ?? 8);
+        return [
+            `--st-title-size:${title}rem`,
+            `--st-clock-size:${clock}rem`,
+            `--st-button-size:${button}rem`,
+            `--st-button-pad:${pad}px`,
+        ].join(";");
     }
     _renderButtons() {
         const showInc = this.config?.show_buttons !== false;
@@ -427,7 +505,7 @@ let SmartTimerCard = class SmartTimerCard extends i {
             "Smart Timer";
         return b `
       <ha-card>
-        <div class="card-content">
+        <div class="card-content" style=${this._sizeStyle()}>
           <div class="header">
             <span class="title">${title}</span>
             <span class="status ${this._timerState} ${this._alerting ? "alert" : ""}">${this._timerState}</span>
@@ -436,10 +514,10 @@ let SmartTimerCard = class SmartTimerCard extends i {
             class="clock ${this._timerState === "running" && !this._alerting ? "running" : ""} ${this._alerting ? "alert" : ""}"
             role="button"
             tabindex="0"
-            @click=${(e) => this._onPauseButton(e)}
+            @click=${(e) => this._onTimerTap(e)}
             @keydown=${(e) => {
             if (e.key === "Enter" || e.key === " ")
-                this._onPauseButton(e);
+                this._onTimerTap(e);
         }}
           >
             ${this._display}
@@ -469,13 +547,13 @@ SmartTimerCard.styles = i$3 `
       gap: 8px;
     }
     .title {
-      font-size: var(--ha-font-size-m, 1rem);
+      font-size: var(--st-title-size, var(--ha-font-size-m, 1rem));
       font-weight: var(--ha-font-weight-medium, 500);
       color: var(--primary-text-color);
     }
     .clock {
       font-family: var(--ha-font-family-code, var(--code-font-family, ui-monospace, monospace));
-      font-size: 1.6rem;
+      font-size: var(--st-clock-size, 1.6rem);
       font-weight: var(--ha-font-weight-medium, 500);
       line-height: 1.1;
       letter-spacing: 0.04em;
@@ -524,13 +602,13 @@ SmartTimerCard.styles = i$3 `
     button {
       border: none;
       border-radius: var(--ha-card-border-radius, var(--mdc-shape-small, 4px));
-      padding: 8px 4px;
-      font-size: var(--ha-font-size-s, 0.8rem);
+      font-size: var(--st-button-size, var(--ha-font-size-s, 0.8rem));
       font-weight: var(--ha-font-weight-medium, 500);
       letter-spacing: 0.02em;
       cursor: pointer;
       color: var(--primary-text-color);
       background: var(--secondary-background-color);
+      padding: var(--st-button-pad, 8px) 4px;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
     }

@@ -45,4 +45,24 @@
     }
   },
   "services": {}
+  ,
+  "entity": {
+    "event": {
+      "finished": {
+        "name": "Finished",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "finished": "Finished"
+            }
+          }
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "finished": "Timer finished"
+    }
+  }
 }

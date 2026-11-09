@@ -38,6 +38,7 @@ from .const import (
     SOUND_NONE,
     EVENT_ATTR_DEVICE_ID,
     EVENT_ATTR_ENTITY_ID,
+    EVENT_ATTR_ENTRY_ID,
     EVENT_ATTR_TIMER_NAME,
     EVENT_ATTR_TOTAL_SECONDS,
     EVENT_ON_FIRE,
@@ -298,6 +299,7 @@ class SmartTimerSensor(RestoreEntity, SensorEntity):
             {
                 EVENT_ATTR_DEVICE_ID: self.device_id,
                 EVENT_ATTR_ENTITY_ID: self.entity_id,
+                EVENT_ATTR_ENTRY_ID: self.entry.entry_id,
                 EVENT_ATTR_TIMER_NAME: self._attr_name,
                 EVENT_ATTR_TOTAL_SECONDS: int(round(self._engine.total)),
             },
